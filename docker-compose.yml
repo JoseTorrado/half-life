@@ -1,0 +1,92 @@
+version: "3.9"
+
+################################################################################
+# NETWORK & VOLUME
+################################################################################
+networks:
+  redpanda_net:
+    driver: bridge
+
+volumes:
+  redpanda-data: {}
+
+################################################################################
+# SINGLE-BROKER REDPANDA
+################################################################################
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.8
+    container_name: redpanda
+    networks: [redpanda_net]
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    command: >
+      redpanda start
+        --mode dev-container
+        --smp 1
+        --default-log-level=info
+        --kafka-addr  internal://0.0.0.0:9092,external://0.0.0.0:19092
+        --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+        --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+        --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+        --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+        --rpc-addr redpanda:33145
+        --advertise-rpc-addr redpanda:33145
+    ports:
+      - 19092:19092 # Kafka for host-side clients
+      - 18081:18081 # Schema Registry
+      - 18082:18082 # HTTP proxy
+      - 19644:9644 # Admin API
+
+  ################################################################################
+  # REDPANDA CONSOLE
+  ################################################################################
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.1.2
+    container_name: redpanda-console
+    networks: [redpanda_net]
+    depends_on: [redpanda]
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+        schemaRegistry:
+          enabled: true
+          urls: ["http://redpanda:8081"]
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda:9644"]
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > $$CONFIG_FILEPATH; /app/console'
+    ports:
+      - 8080:8080
+
+  ################################################################################
+  # DEBUG SHELL (KCAT)
+  ################################################################################
+  kcat:
+    image: edenhill/kcat:1.7.1
+    container_name: kcat
+    networks: [redpanda_net]
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    depends_on: [redpanda]
+
+  ################################################################################
+  # YOUR INGESTION SERVICE
+  ################################################################################
+  puller:
+    build:
+      context: .
+      dockerfile: Dockerfile.puller
+    container_name: pr-puller
+    networks: [redpanda_net]
+    depends_on: [redpanda]
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      SCHEMA_REGISTRY_URL: http://redpanda:8081
+    volumes:
+      - ./src:/app/src
+      - ./avro_schemas:/app/avro_schemas
+    working_dir: /app/src

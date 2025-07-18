@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "name": "PrOpen",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "repo_id", "type": "long"},
+    {"name": "repo_name", "type": "string"},
+    {"name": "pr_number", "type": "int"},
+    {"name": "opened_at", "type": "long", "logicalType": "timestamp-millis"}
+  ]
+}

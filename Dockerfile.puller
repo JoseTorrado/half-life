@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+
+WORKDIR /app 
+COPY pyproject.toml poetry.lock ./ 
+RUN pip install poetry && poetry install --no-root
+
+COPY src ./src 
+COPY avro_schemas ./avro_schemas
+
+CMD ["poetry", "run", "python", "-m", "half_life.puller"]
